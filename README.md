@@ -10,7 +10,7 @@ Each file contains the relevant information of each beta sheet/barrel, such as
     b) the chain where that strand is located
     c) the residues which that strand spans.
 
-Example output:\n
+Example output:
 5DPJ_AA1
     ANTI-PARALLEL # This beta barrel is made up of antiparallel strands
     ['VVPILVELDGDV', 'A', '11-22'] #[Amino acid sequence, chain letter, residue range]
