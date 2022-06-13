@@ -1,64 +1,118 @@
-# ----------------------------------------------------------------------------------------------------------------------
-# betabarrel.py by Jaime Cardenas
+# beta_barrelsV4.py by Jaime Cardenas
 # ----------------------------------------------------------------------------------------------------------------------
 import requests
+from collections import defaultdict
+
+
 # ----------------------------------------------------------------------------------------------------------------------
-def get_sheets():
-    '''
-    Takes a list of PDB identifiers (e.g. "1RVZ, 1gfl, 4fxF") or a text file of comma-separated PDB identifiers and
-    returns two text files as output in your current working directory, one of them giving information about all
-    beta-sheets in the list (sheets.txt), and the other of all beta barrels in the list (barrels.txt).
-
-    Each file contains the relevant information of each beta sheet/barrel, such as
-    1) its unique identifier, which in this case is the pdb ID and the sheet ID, separated by an underscore (e.g. 1GFL_AA)
-    2) whether the sheet/barrel is made up of parallel or antiparallel strands
-    3) the information of each strand that makes up the beta sheet
-        a) amino acid sequence
-        b) the chain where that strand is located
-        c) the residues which that strand spans.
-
-    Example output:
-    5DPJ_AA1
-        ANTI-PARALLEL
-        ['VVPILVELDGDV', 'A', '11-22']
-        ['HKFSVRGEGGD', 'A', '25-36']
-        ['KLTLKFIC', 'A', '41-48']
-        ['HMVLLEFVTAA', 'A', '217-227']
-        ...
-    '''
-    # ------------------------------------------------------------------------------------------------------------------
-    print("\nTakes a list of PDB identifiers (e.g. '1RVZ, 1gfl, 4fxF') or a text file of comma-separated PDB identifiers\n"
-          "and returns two text files as output in your current working directory, one of them giving information about \n"
-          "all beta-sheets in the list (sheets.txt), and the other of all beta barrels in the list (barrels.txt).\n\n"
-        
-        "Each file contains the relevant information of each beta sheet/barrel, such as \n"
-        "1) its unique identifier, which in this case is the pdb ID and the sheet ID, separated by an underscore (e.g. 1GFL_AA)\n"
-        "2) whether the sheet/barrel is made up of parallel or antiparralel strands\n"
-        "3) the information of each strand that makes up the beta sheet\n"
-        "   a) amino acid sequence\n"
-        "   b) the chain where that strand is located\n"
-        "   c) the residues which that strand spans\n\n"
-   
-        "Example output:\n"
-        "5DPJ_AA1\n"
-        "    ANTI-PARALLEL\n"
-        "    ['VVPILVELDGDV', 'A', '11-22']\n"
-        "    ['HKFSVRGEGGD', 'A', '25-36']\n"
-        "    ['KLTLKFIC', 'A', '41-48']\n"
-        "    ['HMVLLEFVTAA', 'A', '217-227']\n"
-        "    ...")
-
+def main():
     pdb_list = input("Enter a list of PDB Identifiers (pdb1, pdb2, pdb3, ...) or a text file with a list of PDBs: ")
     if ".txt" in pdb_list:
         with open(pdb_list, 'r') as p:
             pdb_list = p.read()
-    pdb_list = pdb_list.replace(' ', '').split(',')
-    # ------------------------------------------------------------------------------------------------------------------
-    dics = get_sheets_and_barrels(pdb_list)
-    write_file(dics[0], dics[1])
-    # ------------------------------------------------------------------------------------------------------------------
+    pdb_list = pdb_list.replace(' ', '').replace('\n', ',').split(',')
 
+    beta_sheets = list()
+    beta_barrels = list()
+
+    for pdb in pdb_list:
+        pdb = pdb.upper()
+        pdb_info = get_pdb_info(pdb)
+
+        pdb_seq = pdb_info[1]
+        beta_strands = pdb_info[0]
+
+        structures = is_barrel(beta_strands, pdb_seq)
+
+        beta_sheets_pre = structures[0]
+        beta_barrels_pre = structures[1]
+
+        for sheet in beta_sheets_pre:
+            for strand in sheet.strands:
+                seq = strand.get_strand_sequence(pdb_seq)[0]
+                if seq is not None:
+                    beta_sheets.append(seq)
+        for barrel in beta_barrels_pre:
+            for strand in barrel.strands:
+                seq = strand.get_strand_sequence(pdb_seq)[0]
+                if seq is not None:
+                    beta_barrels.append(seq)
+
+    write_file(beta_sheets, beta_barrels)
 # ----------------------------------------------------------------------------------------------------------------------
+# Define BetaStrand class
+class BetaStrand:
+    def __init__(self, pdbID, sheetID, strandID, start_chain, start_resi, end_chain, end_resi, sense):
+        self.pdbID = pdbID
+        self.sheetID = sheetID
+        self.strandID = strandID
+        self.start_chain = start_chain
+        self.start_resi = start_resi
+        self.end_chain = end_chain
+        self.end_resi = end_resi
+        self.sense = sense
+
+    def __str__(self):
+        return f"{self.pdbID}_{self.sheetID}_{self.strandID}"
+
+    def __repr__(self):
+        return f"{self.pdbID}_{self.sheetID}_{self.strandID}"
+
+    def get_strand_sequence(self, pdb_sequence):
+        start_idx = "PlaceHolder"
+        end_idx = "PlaceHolder"
+
+        for idx, residue in enumerate(pdb_sequence):
+            chain = residue[0]
+            pos = residue[1]
+
+            if self.start_chain == chain and self.start_resi == pos:
+                start_idx = idx
+            if self.end_chain == chain and self.end_resi == pos:
+                end_idx = idx
+                break
+
+        if start_idx != "PlaceHolder" and end_idx != "PlaceHolder":
+            strand_sequence_idx = [*range(start_idx, end_idx+1)]
+            strand_sequence = "".join([pdb_sequence[i][2] for i in strand_sequence_idx])
+        else:
+            strand_sequence_idx = None
+            strand_sequence = None
+
+        return strand_sequence, strand_sequence_idx
+# ----------------------------------------------------------------------------------------------------------------------
+# Define BetaStructure Class
+class BetaStructure:
+    def __init__(self, pdb_sequence, strands):
+        self.strands = strands
+        self.pdbID = strands[0].pdbID
+        self.sheetID = strands[0].sheetID
+
+        if len(self.strands) == 1:
+            self.type = "SHEET"
+            self.sense = "N/A"
+        else:
+            self.sense = strands[1].sense
+            start_strand_idx_range = self.strands[0].get_strand_sequence(pdb_sequence)[1]
+            end_strand_idx_range = self.strands[-1].get_strand_sequence(pdb_sequence)[1]
+
+            if start_strand_idx_range is None or end_strand_idx_range is None:
+                self.type = "N/A"
+            else:
+                for i in start_strand_idx_range:
+                    if i in end_strand_idx_range:
+                        self.type = "BARREL"
+                    else:
+                        self.type = "SHEET"
+
+    def __str__(self):
+        return f"{self.pdbID}_{self.sheetID}"
+
+    def __repr__(self):
+        return f"{self.pdbID}_{self.sheetID}"
+# ----------------------------------------------------------------------------------------------------------------------
+# Define function to get a list of beta strands of the input PDB and a list of tuples, with each tuple containing
+# the chain, residue number, and one letter code of the amino acid at that position
 def get_pdb_info(pdb):
     aa_code = [['ALA', 'A'], ['CYS', 'C'], ['ASP', 'D'], ['GLU', 'E'], ['PHE', 'F'], ['GLY', 'G'], ['HIS', 'H'],
                ['ILE', 'I'], ['LYS', 'K'], ['LEU', 'L'], ['MET', 'M'], ['ASN', 'N'], ['PRO', 'P'], ['GLN', 'Q'],
@@ -66,124 +120,72 @@ def get_pdb_info(pdb):
     url = "https://files.rcsb.org/view/%s.pdb" % pdb
     pdb_file = requests.get(url).content.decode("UTF-8").split("\n")
     # ------------------------------------------------------------------------------------------------------------------
-    pdb_seq = []
-    strands = []
-    # ------------------------------------------------------------------------------------------------------------------
+    pdb_seq = list()
+    beta_strands = list()
+
     for line in pdb_file:
-        pdb_atom = line[13:17].replace(' ', '')
         if "SHEET" == line[:len("SHEET")]:
-            sheet_id = f"{pdb.upper()}_{line[11:14].replace(' ', '')}"
+            pdb_id = pdb
+            sheet_id = line[11:14].replace(' ', '')
             strand_id = int(line[7:10].replace(' ', ''))
-            start = (line[21].replace(' ', ''), int(line[22:26].replace(' ', '')))
-            end = (line[32].replace(' ', ''), int(line[33:37].replace(' ', '')))
+            start_chain = (line[21].replace(' ', ''))
+            start_resi = int(line[22:26].replace(' ', ''))
+            end_chain = (line[32].replace(' ', ''))
+            end_resi = int(line[33:37].replace(' ', ''))
             sense = int(line[38:40].replace(' ', ''))
-            strands.append([sheet_id,strand_id, start, end, sense])
-        # --------------------------------------------------------------------------------------------------------------
+
+            beta_strands.append(
+                BetaStrand(pdb_id, sheet_id, strand_id, start_chain, start_resi, end_chain, end_resi, sense) )
+
+        pdb_atom = line[13:16].replace(' ', '')
         if "ATOM" == line[:len("ATOM")] and "CA" == pdb_atom:
             pdb_chain = line[21].replace(' ', '')
             pdb_resi = int(line[22:26].replace(' ', ''))
-            pdb_resi_3 = line[17:20].replace(' ', '')
-            for threeletter in aa_code:
-                if threeletter[0] == pdb_resi_3:
-                    pdb_resi_1 = threeletter[1]
-            pdb_seq.append((pdb_chain, pdb_resi, pdb_resi_1))
-    # ------------------------------------------------------------------------------------------------------------------
-    return strands, pdb_seq
-# ----------------------------------------------------------------------------------------------------------------------
-def get_sheets_and_barrels(pdb_list):
-    sheets = {}
-    barrels = {}
-    # ------------------------------------------------------------------------------------------------------------------
-    for pdb in pdb_list:
-        strands = get_pdb_info(pdb)[0]
-        pdb_seq = get_pdb_info(pdb)[1]
-        sheets_pre = {}
-        barrels_pre = {}
-        delete = []
-        # --------------------------------------------------------------------------------------------------------------
-        for strand in strands:
-            sheet_id_ = strand[0]
-            sheet_info = strand[1:]
-            if sheet_id_ not in sheets_pre:
-                sheets_pre[sheet_id_] = [sheet_info]
-            else:
-                sheets_pre[sheet_id_].append(sheet_info)
-        # ------------------------------------------------------------------------------------------------------------------
-        for sheet in sheets_pre:
-            start_resi_first = sheets_pre[sheet][0][1][1]
-            end_resi_first = sheets_pre[sheet][0][2][1]
-            start_resi_last = sheets_pre[sheet][-1][1][1]
-            end_resi_last = sheets_pre[sheet][-1][2][1]
-            for i in range(start_resi_first, end_resi_first):
-                if i in range(start_resi_last, end_resi_last):
-                    barrels_pre[sheet] = sheets_pre[sheet][:]
-                    delete.append(sheet)
+            pdb_aa_three_letter = line[17:20].replace(' ', '')
+            for idx, threeletter in enumerate(aa_code):
+                if threeletter[0] == pdb_aa_three_letter:
+                    pdb_aa_one_letter = threeletter[1]
+                    pdb_seq.append((pdb_chain, pdb_resi, pdb_aa_one_letter))
                     break
-        # ------------------------------------------------------------------------------------------------------------------
-        for i in delete:
-            del sheets_pre[i]
-        # ------------------------------------------------------------------------------------------------------------------
-        for sheet in sheets_pre:
-            if sheets_pre[sheet][1][3] == -1:
-                sense_ = 'ANTI-PARALLEL'
-            else:
-                sense_ = 'PARALLEL'
-            sheets[sheet] = [sense_]
-            for strand in sheets_pre[sheet]:
-                seq = ''
-                start_resi = strand[1][1]
-                end_resi = strand[2][1]
-                chain = strand[1][0]
-                for resi in range(start_resi, end_resi+1):
-                    for aa in pdb_seq:
-                        pdb_chain_ = aa[0]
-                        pdb_resi_ = aa[1]
-                        pdb_one_letter = aa[2]
-                        if resi == pdb_resi_ and chain == pdb_chain_:
-                            seq += pdb_one_letter
-                sheets[sheet].append([seq, chain, f'{str(start_resi)}-{str(end_resi)}'])
-        # ------------------------------------------------------------------------------------------------------------------
-        for barrel in barrels_pre:
-            try:
-                if barrels_pre[barrel][1][3] == -1:
-                    sense_ = 'ANTI-PARALLEL'
-                else:
-                    sense_ = 'PARALLEL'
-            except IndexError:
-                sense_ = 'N/A'
-            barrels[barrel] = [sense_]
-            for strand in barrels_pre[barrel]:
-                seq = ''
-                start_resi = strand[1][1]
-                end_resi = strand[2][1]
-                chain = strand[1][0]
-                for resi in range(start_resi, end_resi+1):
-                    for aa in pdb_seq:
-                        pdb_chain_ = aa[0]
-                        pdb_resi_ = aa[1]
-                        pdb_one_letter = aa[2]
-                        if resi == pdb_resi_ and chain == pdb_chain_:
-                            seq += pdb_one_letter
-                # ------------------------------------------------------------------------------------------------------
-                barrels[barrel].append([seq, chain, f'{str(start_resi)}-{str(end_resi)}'])
-        # --------------------------------------------------------------------------------------------------------------
-    return sheets, barrels
-    # ------------------------------------------------------------------------------------------------------------------
-def write_file(sheets_dic, barrels_dic):
+                elif idx == 19:
+                    pdb_seq.append((pdb_chain, pdb_resi, "X"))
+
+    return beta_strands, pdb_seq
+# ----------------------------------------------------------------------------------------------------------------------
+# Define function to take a list of beta strands and categorize them as either part of a beta barrel or part
+# of a beta sheet
+def is_barrel(beta_strands, pdb_seq):
+    beta_structures_pre = defaultdict(list)
+    beta_structures = list()
+    beta_sheets = list()
+    beta_barrels = list()
+
+    for strand in beta_strands:
+        key = f"{strand.pdbID}_{strand.sheetID}"
+        beta_structures_pre[key].append(strand)
+
+    for structure in beta_structures_pre:
+        beta_structures.append(BetaStructure(pdb_seq, beta_structures_pre[structure]))
+
+    for structure in beta_structures:
+        if structure.type == "SHEET":
+            beta_sheets.append(structure)
+        elif structure.type == "BARREL":
+            beta_barrels.append(structure)
+
+    return beta_sheets, beta_barrels
+# ----------------------------------------------------------------------------------------------------------------------
+# Define a function to write all the sequences of beta barrels to a file called barrels.txt, and all
+# the sequences of beta sheets to a file called sheets.txt
+def write_file(beta_sheets, beta_barrels):
     with open("sheets.txt", "w") as s:
-        for sheet in sheets_dic:
-            s.write(f"{sheet}\n")
-            strands = sheets_dic[sheet]
-            for strand in strands:
-                s.write("    %s\n" % str(strand))
+        for strand_seq in beta_sheets:
+            s.write(strand_seq + '\n')
 
-    with open("barrels.txt", "w") as b:
-        for barrel in barrels_dic:
-            b.write(f"{barrel}\n")
-            strands = barrels_dic[barrel]
-            for strand in strands:
-                b.write("    %s\n" % str(strand))
-
-
-get_sheets()
+    with open("barrels.txt", 'w') as b:
+        for strand_seq in beta_barrels:
+            b.write(strand_seq + '\n')
+# ----------------------------------------------------------------------------------------------------------------------
+# Run the main function at the top of this file
+main()
 
