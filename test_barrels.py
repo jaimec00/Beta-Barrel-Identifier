@@ -1,25 +1,22 @@
-# import pymol
 
 def color_beta():
+    with open("pymol_barrel_test.txt", "r") as p:
+        lines = p.readlines()
+        pdbs = lines[0].split(",")
+        color_commands = lines[1:]
 
-    with open("sheets.txt", "r") as s:
-        lines = s.readlines()
-        if len(lines) > 0:
-            pdbs = lines[0].split(",")
-            color_commands = lines[1:]
-            for pdb in pdbs:
-                cmd.fetch(pdb)
-            # Color everything green
-            cmd.color("green")
-            # Color sheets blue
-            for command in color_commands:
-                cmd.color("blue", command)
+        # Load the PDBs
+        for pdb in pdbs:
+            cmd.fetch(pdb)
 
-    # Color barrels red
-    with open("barrels.txt", "r") as b:
-        color_commands = b.readlines()
-        if len(color_commands) > 0:
-            for command in color_commands:
-                cmd.color("red", command)
+        # Color everything green
+        cmd.color("green")
+
+        # Color sheets blue and barrels red
+        for command in color_commands:
+            command = command.split(', ')
+            cmd.color(command[0], command[1])
 
 cmd.extend("color_beta", color_beta)
+
+color_beta()

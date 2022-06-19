@@ -1,13 +1,15 @@
 # beta_barrelsV5.py by Jaime Cardenas
 # ----------------------------------------------------------------------------------------------------------------------
+# imports
 import requests
 from collections import defaultdict
+import os
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Define main function
 def main():
-    # Get list of pdb files and clean
+    # Get a list of PDB files and clean it
     pdb_list = input("Enter a list of PDB Identifiers (pdb1, pdb2, pdb3, ...) or a text file with a list of PDBs: ")
     if ".txt" in pdb_list:
         with open(pdb_list, 'r') as p:
@@ -21,11 +23,10 @@ def main():
     # Append the beta barrels and beta sheets from each pdb in the pdb list into their corresponding list from above
     for pdb in pdb_list:
         pdb = pdb.upper()
-        pdb_info = get_pdb_info(pdb)
 
-        # Get the sequence of the protein from the PDB
+        # Get the whole sequence of the protein and the strand information for each strand in the protein from the PDB
+        pdb_info = get_pdb_info(pdb)
         pdb_seq = pdb_info[1]
-        # Get the strand information of the protein from the PDB
         beta_strands = pdb_info[0]
 
         # Define the strands that make up a beta structure as either a sheet or a barrel
@@ -46,7 +47,10 @@ def main():
                     beta_barrels.append(seq)
 
     # Write the sequences to their appropriate files
-    write_file(beta_sheets, beta_barrels)
+    # The write_file function takes an optional keyword argument that specifies where you want the files to be written
+    # to. The default is your current working directory, but you can enter:
+    # write_file(beta_sheets, beta_barrels, dir="/Absolute/Path/To/Your/Directory")
+    write_file(beta_sheets, beta_barrels, dir="C:\\Users\\hejac\\OneDrive\\Desktop")
 # ----------------------------------------------------------------------------------------------------------------------
 # Define BetaStrand class
 class BetaStrand:
@@ -88,9 +92,9 @@ class BetaStrand:
                 end_idx = idx
                 break
 
-        # If the above code failed to find the starting and ending residues (e.g. the line is HETATM), then the
-        # strand sequence and the strand sequence index are set to none, else the strand sequence and its index are
-        # assigned their values
+        # If the above code failed to find the starting and ending residues (e.g. the PDB line is HETATM), then the
+        # strand sequence and the strand sequence index are set to None, else the strand sequence and its index are
+        # assigned their appropriate values
         if start_idx != "PlaceHolder" and end_idx != "PlaceHolder":
             strand_sequence_idx = [*range(start_idx, end_idx+1)]
             strand_sequence = "".join([pdb_sequence[i][2] for i in strand_sequence_idx])
@@ -107,37 +111,34 @@ class BetaStructure:
         self.pdbID = strands[0].pdbID
         self.sheetID = strands[0].sheetID
 
-        # This is done so that if a structure is made up of just one strand, it will not be assigned as a beta barrel
-        if len(self.strands) == 1:
-            self.type = "SHEET"
-        else:
-            # Get a list of lists, with each inner list containing the index positions of a single strand's sequence.
-            # This is done for each strand in the beta structure
-            strand_sequence_idx_list = list()
-            for strand in self.strands:
-                strand_sequence_idx_list.append( strand.get_strand_sequence(pdb_sequence)[1] )
+        # Beta sheet is the default, but if the following code finds two strands within a beta structure to have the
+        # same index values then it will override the default and make the structure a barrel
+        self.type = "SHEET"
 
-            # Create a counter to check if any of the index positions of the strands within a beta structure overlap
-            betas_temp = 0
-            # for each strand in the structure, check if any of that strand's index positions are in another strand
-            # within the same structure
-            for n in range( len(strand_sequence_idx_list) ):
-                # Get the index positions of the n strand
-                strand_sequence_idx_n = strand_sequence_idx_list[n]
-                # Get the index positions of all the strands that are not n
-                strand_sequence_idx_list_not_n = [strand_sequence_idx_list[i] for i in range(len(strand_sequence_idx_list))
-                                             if i != n]
+        # Get a list of lists, with each inner list containing the index positions of a single strand's sequence.
+        # This is done for each strand in the beta structure
+        strand_sequence_idx_list = [strand.get_strand_sequence(pdb_sequence)[1] for strand in self.strands if
+                                    strand.get_strand_sequence(pdb_sequence)[1] is not None]
 
+        # For each strand in the structure, check if any of that strand's index positions are in another strand
+        # within the same structure
+        for n in range( len(strand_sequence_idx_list) ):
+            # Get the index positions of the n strand
+            strand_sequence_idx_n = strand_sequence_idx_list[n]
+            # Get the index positions of all the strands that are not n
+            strand_sequence_idx_list_not_n = [strand_sequence_idx_list[i] for i in range(len(strand_sequence_idx_list))
+                                         if i != n]
 
-                for position_idx_n in strand_sequence_idx_n:
-                    for strand_sequence_idx_not_n in strand_sequence_idx_list_not_n:
-                        if position_idx_n in strand_sequence_idx_not_n:
-                            betas_temp += 1            
-
-            if betas_temp > 0:
-                self.type = "BARREL"
-            else:
-                self.type = "SHEET"
+            # Check whether the index number of the n strand is the same as any of the index numbers that are not n
+            # If there is a repeat, label this structure as a beta barrel
+            for position_idx_n in strand_sequence_idx_n:
+                for strand_sequence_idx_not_n in strand_sequence_idx_list_not_n:
+                    if position_idx_n in strand_sequence_idx_not_n:
+                        self.type = "BARREL"
+                        break
+                    else:
+                        continue
+                break
 
     def __str__(self):
         return f"{self.pdbID}_{self.sheetID}"
@@ -145,12 +146,16 @@ class BetaStructure:
     def __repr__(self):
         return f"{self.pdbID}_{self.sheetID}"
 # ----------------------------------------------------------------------------------------------------------------------
-# Define function to get a list of beta strands of the input PDB and a list of tuples, with each tuple containing
-# the chain, residue number, and one-letter code of the amino acid at that position
+# Define function to get a list of beta strands of the input PDB and a list of tuples representing each position in the
+# whole protein sequence, and each tuple containing the chain, residue number, and one-letter code of the amino acid
+# at that position
 def get_pdb_info(pdb):
+    # Define the AA code to convert three-letter codes to one-letter codes
     aa_code = [['ALA', 'A'], ['CYS', 'C'], ['ASP', 'D'], ['GLU', 'E'], ['PHE', 'F'], ['GLY', 'G'], ['HIS', 'H'],
                ['ILE', 'I'], ['LYS', 'K'], ['LEU', 'L'], ['MET', 'M'], ['ASN', 'N'], ['PRO', 'P'], ['GLN', 'Q'],
                ['ARG', 'R'], ['SER', 'S'], ['THR', 'T'], ['VAL', 'V'], ['TRP', 'W'], ['TYR', 'Y']]
+
+    # Fetch the PDB info from the RCSB
     url = "https://files.rcsb.org/view/%s.pdb" % pdb
     pdb_file = requests.get(url).content.decode("UTF-8").split("\n")
     # ------------------------------------------------------------------------------------------------------------------
@@ -158,6 +163,7 @@ def get_pdb_info(pdb):
     beta_strands = list()
 
     for line in pdb_file:
+        # Each line containing "SHEET" is a single beta strand. Extract the info from that line
         if "SHEET" == line[:len("SHEET")]:
             pdb_id = pdb
             sheet_id = line[11:14].replace(' ', '')
@@ -166,21 +172,27 @@ def get_pdb_info(pdb):
             start_resi = int(line[22:26].replace(' ', ''))
             end_chain = (line[32].replace(' ', ''))
             end_resi = int(line[33:37].replace(' ', ''))
-            sense = int(line[38:40].replace(' ', ''))
+            sense = line[38:40].replace(' ', '')
 
+            # Make a BetaStrand object with the appropriate info
             beta_strands.append(
                 BetaStrand(pdb_id, sheet_id, strand_id, start_chain, start_resi, end_chain, end_resi, sense) )
 
         pdb_atom = line[13:16].replace(' ', '')
+        # Each line containing "ATOM" and whose atom is "CA" represents a residue in the protein sequence. Extract the
+        # info
         if "ATOM" == line[:len("ATOM")] and "CA" == pdb_atom:
             pdb_chain = line[21].replace(' ', '')
             pdb_resi = int(line[22:26].replace(' ', ''))
             pdb_aa_three_letter = line[17:20].replace(' ', '')
+            # Convert the three-letter code found in the PDB to the one-letter code
             for idx, threeletter in enumerate(aa_code):
                 if threeletter[0] == pdb_aa_three_letter:
                     pdb_aa_one_letter = threeletter[1]
                     pdb_seq.append((pdb_chain, pdb_resi, pdb_aa_one_letter))
                     break
+                # If none of the three-letter codes in the beginning of this function match the three-letter code in
+                # the PDB line, then write "X" as its one-letter code
                 elif idx == 19:
                     pdb_seq.append((pdb_chain, pdb_resi, "X"))
 
@@ -194,13 +206,18 @@ def is_barrel(beta_strands, pdb_seq):
     beta_sheets = list()
     beta_barrels = list()
 
+    # Categorize the beta strands by structures. If multiple beta strands have the same sheet ID, then they are one
+    # beta structure
     for strand in beta_strands:
         key = f"{strand.pdbID}_{strand.sheetID}"
         beta_structures_pre[key].append(strand)
 
+    # Create a BetaStructure object for each structure created in the above dictionary and put it in the beta_structures
+    # list
     for structure in beta_structures_pre:
         beta_structures.append(BetaStructure(pdb_seq, beta_structures_pre[structure]))
 
+    # Categorize each beta structure as either a beta sheet or beta barrel and append it to the appropriate list
     for structure in beta_structures:
         if structure.type == "SHEET":
             beta_sheets.append(structure)
@@ -209,16 +226,22 @@ def is_barrel(beta_strands, pdb_seq):
 
     return beta_sheets, beta_barrels
 # ----------------------------------------------------------------------------------------------------------------------
-# Define a function to write all the sequences of beta barrels to a file called barrels.txt, and all
-# the sequences of beta sheets to a file called sheets.txt
-def write_file(beta_sheets, beta_barrels):
+# Define a function to write all the sequences of beta barrels to a file called barrels.txt, and all the sequences of
+# beta sheets to a file called sheets.txt
+def write_file(beta_sheets, beta_barrels, dir=os.getcwd()):
+    # Change the directory to the one specified in the keyword dir (default is the current working directory)
+    os.chdir(dir)
+
+    # Open a file called sheets.txt and write the sequence of each sheet structure to it
     with open("sheets.txt", "w") as s:
         for strand_seq in beta_sheets:
             s.write(strand_seq + '\n')
 
+    # Open a file called barrels.txt and write the sequence of each barrel structure to it
     with open("barrels.txt", 'w') as b:
         for strand_seq in beta_barrels:
             b.write(strand_seq + '\n')
 # ----------------------------------------------------------------------------------------------------------------------
 # Run the main function at the top of this file
 main()
+
