@@ -15,7 +15,7 @@ def main():
     if ".txt" in pdb_list[0]:
         with open(pdb_list[0], 'r') as p:
             pdb_list = p.read()
-            pdb_list = pdb_list.replace(' ', '').replace('\n', ',').split(',')
+            pdb_list = pdb_list..replace(',', ' ').replace('\n', ' ').replace('  ', ' ').split(' ')
     
     # Create empty list to store sheets and barrels
     beta_sheets = []
