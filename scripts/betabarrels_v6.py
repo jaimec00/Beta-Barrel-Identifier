@@ -15,7 +15,7 @@ def main():
     if ".txt" in pdb_list[0]:
         with open(pdb_list[0], 'r') as p:
             pdb_list = p.read()
-            pdb_list = pdb_list.replace(',', ' ').replace('\n', ' ').replace('  ', ' ').split(' ')
+            pdb_list = pdb_list.replace(',', ' ').replace('\n', ' ').replace('  ', ' ').upper().split(' ')
     
     # Create empty list to store sheets and barrels
     beta_sheets = []
@@ -23,7 +23,6 @@ def main():
     
     # Iterate over the PDB's
     for pdb in pdb_list:
-        pdb = pdb.upper()
         # Get a list of all the beta structures
         beta_structures = get_beta_structures(pdb)
 
