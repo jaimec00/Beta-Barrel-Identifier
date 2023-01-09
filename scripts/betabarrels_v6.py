@@ -91,8 +91,8 @@ def get_beta_structures(pdb):
             beta_strands.append( BetaStrand(pdb_id, sheet_id, strand_id, start_chain, start_position, end_chain, end_position, sense) )
 
         pdb_atom = line[13:16].replace(' ', '')
-        # Each line containing "ATOM" and whose atom is "CA" (the alpha carbon) represents a residue in the protein sequence. 
-        # Extract the info
+        # Each line containing "ATOM" (for canonical amino acids) or "HETATM" (for non-canonical amino acids) and whose atom is 
+        # "CA" (the alpha carbon) represents a residue in the protein sequence. Extract the info
         if ("ATOM" == line[:len("ATOM")] or "HETATM" == line[:len("HETATM")]) and "CA" == pdb_atom:
             chain = line[21].replace(' ', '')
             position = int(line[22:26].replace(' ', ''))
@@ -109,7 +109,7 @@ def get_beta_structures(pdb):
             # Make an Amino_Acid object and append it to the pdb_seq list
             pdb_seq.append( Amino_Acid(chain, position, aa_one) )
     # ------------------------------------------------------------------------------------------------------------------
-    # Create an empty dictionary to store the beta structures (the keys) made up of beta strands (the list within the key)
+    # Create an empty dictionary to store the beta structures (the keys) made up of beta strands (the values making up the list within the key)
     beta_structures_pre = defaultdict(list)
     for strand in beta_strands:
         
