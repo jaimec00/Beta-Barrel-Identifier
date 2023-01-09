@@ -34,7 +34,7 @@ def main():
                 beta_sheets.append(beta_structure)
     
     # Write all beta barrels to barrels.txt and all beta sheets to sheets.txt, and a third file (pymol_commands.txt) contains
-    # commands that PyMOL can read so you can visualize the output
+    # commands that PyMOL can read so you can visualize the output using betabarrels_pymol_test.py
     if not os.path.isdir("out"): os.mkdir("out")
     with (
         open(os.path.join("out", "barrels.txt"), "w") as b, 
